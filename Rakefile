@@ -15,31 +15,7 @@
 require 'erb'
 require 'open-uri'
 require 'json'
-
-def versionFile(name)
-  version_file_location = ENV["VERSION_FILE_LOCATION"] || 'version.json'
-  JSON.parse(File.read(version_file_location))[name] if File.file?(version_file_location)
-end
-
-def get_var(name)
-  value = ENV[name]
-  raise "\e[1;31m[ERROR]\e[0m  Environment #{name} not specified!" if value.to_s.strip.empty?
-  value
-end
-
-class Docker
-  def self.login
-    token = ENV["TOKEN"]
-    if token
-      FileUtils.mkdir_p "#{Dir.home}/.docker"
-      File.open("#{Dir.home}/.docker/config.json", "w") do |f|
-        f.write({:auths => {"https://index.docker.io/v1/" => {:auth => token}}}.to_json)
-      end
-    else
-      puts "\e[1;33m[WARN]\e[0m Skipping docker login as environment variable TOKEN is not specified."
-    end
-  end
-end
+require 'helpers/foo'
 
 gocd_full_version = versionFile('go_full_version') || get_var('GOCD_FULL_VERSION')
 gocd_version = versionFile('go_version') || get_var('GOCD_VERSION')
@@ -50,7 +26,6 @@ download_url = ENV['GOCD_AGENT_DOWNLOAD_URL'] || "https://download.gocd.org/expe
 
 # Perform docker login if token is specified
 Docker.login
-
 ROOT_DIR = Dir.pwd
 
 def tini_assets
@@ -81,7 +56,7 @@ create_user_and_group_cmd = [
 
 maybe_credentials = "#{ENV['GIT_USER']}:#{ENV['GIT_PASSWORD']}@" if ENV['GIT_USER'] && ENV['GIT_PASSWORD']
 
-agents = [
+linux_docker_agents = [
     {
         distro: 'alpine',
         version: '3.5',
@@ -215,7 +190,7 @@ agents = [
     {
         distro: 'ubuntu',
         version: '16.04',
-        release_name:'xenial',
+        release_name: 'xenial',
         eol_date: '2021-04-01',
         add_files: tini_and_gosu_add_file_meta,
         create_user_and_group: create_user_and_group_cmd,
@@ -230,7 +205,7 @@ agents = [
     {
         distro: 'ubuntu',
         version: '18.04',
-        release_name:'bionic',
+        release_name: 'bionic',
         eol_date: '2023-04-01',
         add_files: tini_and_gosu_add_file_meta,
         create_user_and_group: create_user_and_group_cmd,
@@ -243,7 +218,7 @@ agents = [
     {
         distro: 'centos',
         version: '6',
-        release_name:'6',
+        release_name: '6',
         eol_date: '2020-11-01',
         add_files: tini_and_gosu_add_file_meta,
         create_user_and_group: create_user_and_group_cmd,
@@ -256,7 +231,7 @@ agents = [
     {
         distro: 'centos',
         version: '7',
-        release_name:'7',
+        release_name: '7',
         eol_date: '2024-06-01',
         add_files: tini_and_gosu_add_file_meta,
         create_user_and_group: create_user_and_group_cmd,
@@ -269,9 +244,9 @@ agents = [
 ]
 
 total_workers = (ENV['GO_JOB_RUN_COUNT'] || '1').to_i
-agents_per_worker = (agents.size.to_f / total_workers).ceil
+agents_per_worker = (linux_docker_agents.size.to_f / total_workers).ceil
 current_worker_index = (ENV['GO_JOB_RUN_INDEX'] || '1').to_i
-agents_to_build = agents.each_slice(agents_per_worker).to_a[current_worker_index - 1]
+agents_to_build = linux_docker_agents.each_slice(agents_per_worker).to_a[current_worker_index - 1]
 
 agents_to_build.each do |image|
   distro = image[:distro]
